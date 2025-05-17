@@ -6,8 +6,8 @@ import re
 # ініціалізація моделі
 token_classifier = pipeline(
     "token-classification",
-    model=r"model",
-    tokenizer=r"model"
+    model=r"denbondarchukk/gec-comma-uk",
+    tokenizer=r"denbondarchukk/gec-comma-uk"
 )
 
 

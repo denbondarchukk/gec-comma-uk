@@ -18,6 +18,6 @@
 ## Встановлення
 
 ```bash
-git clone https://github.com/denbondarchukk/gec-comma-uk.git
-cd gec-comma-uk
+git clone https://github.com/denbondarchukk/gec-comma-uk.git comma_project
+cd comma_project
 pip install -r requirements.txt
