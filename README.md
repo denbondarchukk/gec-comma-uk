@@ -21,3 +21,11 @@
 git clone https://github.com/denbondarchukk/gec-comma-uk.git comma_project
 cd comma_project
 pip install -r requirements.txt
+```
+
+## Запуск системи
+Щоб розгорнути та запустити проект локально, виконайте наступні кроки:
+1. Створіть віртуальне середовище
+2. Завантажте модель з Hugging Face
+3. Завантажте репозиторій з GitHub
+4. Запустіть interface.py
