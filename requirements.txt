@@ -1,2 +1,4 @@
-transformers~=4.51.3
+transformers
 torch
+supabase
+gradio
