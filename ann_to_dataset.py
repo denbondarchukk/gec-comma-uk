@@ -2,112 +2,123 @@ import os
 import re
 import json
 from transformers import AutoTokenizer
-
+# токенізатор моделі
 tokenizer = AutoTokenizer.from_pretrained("ukr-models/xlm-roberta-base-uk")
 
-# функція для обробки анотацій з файлів
+
+# обробка файлів .ann
 def transform_annotations(ann_files):
     result_text = ""
-
     for filename in ann_files:
         with open(filename, "r", encoding="utf-8") as f:
             content = f.read()
 
-            # Обробка кожної анотації у форматі {...}
             def handle_annotation(match):
                 left, right, err_type = match.group(1), match.group(2), match.group(3)
                 if err_type == "Punctuation" and ("," in left or "," in right):
-                    return match.group(0)  # лишаємо як є, якщо помилка з комою
+                    return match.group(0)
                 else:
-                    return f"{right}"  # лишаємо виправлене
+                    return f"{right}"
 
-            # пошук і заміна непотрібних анотацій
             pattern = r"\{(.*?)=>(.*?):::error_type=(.*?)\}"
             content = re.sub(pattern, handle_annotation, content)
             result_text += content + "\n\n"
-
     return result_text
 
 
-# функція для витягування прикладів для навчання
+# створення датасету
 def extract_samples(annotated_text):
     samples = []
-    total_insertions = 0
-    total_deletions = 0
+    total_marks = 0
+    total_tokens = 0  # лічильник усіх токенів
     paragraphs = annotated_text.strip().split("\n")
 
     for paragraph in paragraphs:
         if not paragraph.strip():
             continue
 
-        comma_insert_positions = []  # де треба вставити кому (1 на попередньому слові)
-        comma_delete_positions = []  # де треба видалити кому (1 на самій комі)
-
+        comma_positions = []
         clean_text = ""
         idx = 0
 
+        # пошук анотацій з комами
         for match in re.finditer(r"\{(.*?)=>(.*?):::error_type=Punctuation}", paragraph):
             start, end = match.span()
             left, right = match.group(1), match.group(2)
 
-            # додаємо до чистого тексту початкову помилку (left)
-            clean_text += paragraph[idx:start] + left
+            # видалення всіх правильні коми
+            text_before = paragraph[idx:start]
+            parts = text_before.split(",")
+            for i, part in enumerate(parts):
+                clean_text += part
+                if i < len(parts) - 1:
+                    current_tokens = tokenizer.tokenize(clean_text)
+                    if current_tokens:
+                        comma_positions.append(len(current_tokens) - 1)
+                        total_marks += 1
+
+            # видалення коми з помилкового варіанту і виставлення міьки
+            clean_text += left.replace(",", "")
+            if "," in right:
+                current_tokens = tokenizer.tokenize(clean_text)
+                if current_tokens:
+                    comma_positions.append(len(current_tokens) - 1)
+                    total_marks += 1
+
             idx = end
 
-            current_tokens = tokenizer.tokenize(clean_text)
-            token_index = len(current_tokens) - 1
-
-            # якщо потрібно вставити кому
-            if right == "," and left != ",":
-                comma_insert_positions.append(token_index)
-                total_insertions += 1
-            # якщо потрібно видалити кому
-            elif left == "," and right != ",":
-                # поточний токен — це кома
-                comma_delete_positions.append(token_index)
-                total_deletions += 1
-
-        # додаємо решту тексту після останньої анотації
-        clean_text += paragraph[idx:]
+        # додавання решти тексту
+        remaining_parts = paragraph[idx:].split(",")
+        for i, part in enumerate(remaining_parts):
+            clean_text += part
+            if i < len(remaining_parts) - 1:
+                current_tokens = tokenizer.tokenize(clean_text)
+                if current_tokens:
+                    comma_positions.append(len(current_tokens) - 1)
+                    total_marks += 1
 
         tokens = tokenizer.tokenize(clean_text)
         labels = [0] * len(tokens)
 
-        for pos in comma_insert_positions:
+        for pos in comma_positions:
             if 0 <= pos < len(labels):
-                labels[pos] = 1  # вставити кому після цього слова
+                labels[pos] = 1
 
-        for pos in comma_delete_positions:
-            if 0 <= pos < len(labels) and tokens[pos] == ",":
-                labels[pos] = 2  # видалити кому
+        total_tokens += len(labels)  # додаємо токени поточного абзацу
 
         samples.append({
             "text": " ".join(tokens),
             "labels": labels
         })
 
-    print(f"Кома потрібна (вставка): {total_insertions}")
-    print(f"Кома зайва (видалення): {total_deletions}")
+    # обрахунок міток без ком
+    total_zeros = total_tokens - total_marks
 
+    print(f"Загальна кількість токенів у файлі: {total_tokens}")
+    print(f"• Міток LABEL_0 (кома не потрібна): {total_zeros}")
+    print(f"• Міток LABEL_1 (вставка коми): {total_marks}")
     return samples
 
 
-# функція для обробки і збереження датасету
+# збереження у формат .json
 def process_and_save(directory, output_file):
-    # зчитування всіх файлів .ann з директорії
+    if not os.path.exists(directory):
+        print(f"Директорію {directory} не знайдено.")
+        return
+
     ann_files = sorted([os.path.join(directory, f) for f in os.listdir(directory) if f.endswith(".ann")])
-    # отримання анотованого тексту
     processed = transform_annotations(ann_files)
-    # створення датасету для навчання
     dataset = extract_samples(processed)
-    # збереження у файл
+
+    os.makedirs(os.path.dirname(output_file), exist_ok=True)
     with open(output_file, "w", encoding="utf-8") as f:
         for item in dataset:
             json.dump(item, f, ensure_ascii=False)
             f.write("\n")
-    print(f'Записано {len(dataset)} рядків у "{output_file}"')
+    print(f'Записано у "{output_file}"\n')
 
 
-directory = "data/train/annotated"
-output_file = "dataset/train.json"
+# запуск
+directory = "ua-gec/data/gec-only/test/annotated"
+output_file = "dataset/test.json"
 process_and_save(directory, output_file)
