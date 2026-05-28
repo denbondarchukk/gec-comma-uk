@@ -14,7 +14,7 @@ token_classifier = pipeline(
 )
 
 # підключення supabase
-SUPABASE_URL = "https://txlnduafnjtzrtjtnjhz.supabase.co"  # os.environ.get("SUPABASE_URL")
-SUPABASE_KEY = "sb_publishable_3N6ZDr39KJ9IkQBXYqPLVg_4zVTSohb"  # os.environ.get("SUPABASE_KEY")
+SUPABASE_URL = os.environ.get("SUPABASE_URL")
+SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
 
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
